@@ -71,7 +71,7 @@ def symmetry_score(assets: List[Layout], axis: str) -> float:
     return 0.8 # ダミーのスコア
 
 # --- スキル管理 ---
-SKILLS = {
+SKILLS: Dict[str, callable] = {
     "proximity": proximity_score,
     "alignment": alignment_score,
     "parallelism": parallelism_score,
@@ -79,21 +79,49 @@ SKILLS = {
     "symmetry": symmetry_score,
 }
 
+def initialize_skills():
+    """
+    【追加】プログラム起動時にデータベースから最新のスキルを読み込み、
+    メモリ上のSKILLSを更新する。
+    """
+    learned_skills_code = skill_database.load_skills_from_db()
+    if not learned_skills_code:
+        return # データベースが空か、読み込めなかった場合は何もしない
+
+    for skill_name, source_code in learned_skills_code.items():
+        try:
+            # 読み込んだ文字列のソースコードから、実行可能な関数オブジェクトを動的に生成
+            exec(source_code, globals())
+            # グローバルに生成された関数オブジェクトでSKILLSを更新
+            SKILLS[skill_name] = globals()[skill_name]
+            print(f"[Library] ℹ️ スキル '{skill_name}' が学習済みのバージョンに更新されました。")
+        except Exception as e:
+            print(f"[Library] ❌ エラー: スキル '{skill_name}' の動的読み込みに失敗 - {e}")
+
 def get_skill_source(skill_name: str) -> str:
-    """指定されたスキルのソースコードを取得する。"""
+    """指定されたスキルのソースコードを取得する。(変更なし)"""
     if skill_name in SKILLS:
         return inspect.getsource(SKILLS[skill_name])
     return ""
 
 def update_skill(skill_name: str, new_function_code: str):
-    """スキルライブラリの関数を動的に更新する。"""
+    """
+    【修正】スキルライブラリの関数を動的に更新し、
+    その結果をデータベースに保存する。
+    """
     try:
-        # 文字列から関数オブジェクトを生成
+        # 1. メモリ上のスキルを更新
         exec(new_function_code, globals())
         new_func = globals()[skill_name]
-        
-        # ライブラリを更新
         SKILLS[skill_name] = new_func
-        print(f"[Library] ✔️ スキル '{skill_name}' が正常に更新されました。")
+        print(f"[Library] ✔️ メモリ上のスキル '{skill_name}' が正常に更新されました。")
+
+        # 2. データベースに保存
+        # 現在の全スキルのソースコードを取得
+        current_skills_source = {name: inspect.getsource(func) for name, func in SKILLS.items()}
+        # データベースに保存
+        skill_database.save_skills_to_db(current_skills_source)
+
     except Exception as e:
         print(f"[Library] ❌ エラー: スキル '{skill_name}' の更新に失敗しました - {e}")
+

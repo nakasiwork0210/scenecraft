@@ -5,9 +5,11 @@ SceneCraftエージェントを実行し、テキストから3Dシーン生成�
 from agent import SceneCraftAgent
 from utils import blender_env
 from library import spatial_skill_library
+from library import spatial_skill_library
 
 def main():
     print("============== SceneCraft Agent Initializing ==============")
+    spatial_skill_library.initialize_skills()
     agent = SceneCraftAgent()
     
     # 論文の例に基づくユーザーからのクエリ
