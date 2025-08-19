@@ -1,127 +1,100 @@
 # agent.py
 """
 SceneCraftエージェントのコアロジックを実装するモジュール
+論文の Figure 2, 3 に示されたワークフロー全体を統括する。
 """
-import openai
-import base64
-from typing import List
+from typing import List, Dict, Any
+import inspect
 
-from config import OPENAI_API_KEY, DECOMPOSER_MODEL, PLANNER_MODEL, REVIEWER_MODEL
-from utils import parse_llm_response_to_json, extract_python_code
+from modules import asset_retriever, decomposer, planner, coder, reviewer
+from utils.llm_utils import call_llm, extract_python_code
+from utils.config import LEARNER_MODEL
+from library import spatial_skill_library
 
 class SceneCraftAgent:
     """
-    テキストから3Dシーンを生成するLLMエージェント
+    テキストから3Dシーンを生成し、自己進化するLLMエージェント
     """
     def __init__(self):
-        openai.api_key = OPENAI_API_KEY
+        self.history = [] # Outer-Loopのための履歴
 
-    def decompose_query(self, user_query: str) -> List[dict]:
-        """ユーザーのクエリをサブシーンのリストに分解する (Step 2)"""
-        prompt = f"""
-        私はBlenderスクリプトを書いて、次のシーンを生成しようとしています: "{user_query}"
-        
-        このシーンを構築するための具体的な計画を、複数のステップに分けて提示してください。
-        各ステップはJSONオブジェクトのリストとして、以下のキーを持つ形式で出力してください:
-        - "title": ステップの概要
-        - "asset_list": このステップで追加するアセット名のリスト
-        - "description": このステップ完了後の詳細な視覚的記述
-        
-        環境アセットから始め、徐々に詳細なアセットを追加してください。
-        [
-            {{ "title": "...", "asset_list": [...], "description": "..." }},
-            {{ "title": "...", "asset_list": [...], "description": "..." }}
-        ]
+    def run_inner_loop(self, user_query: str) -> Dict[str, Any]:
         """
-        response = openai.ChatCompletion.create(
-            model=DECOMPOSER_MODEL,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return parse_llm_response_to_json(response.choices[0].message.content)
-
-    def plan_scene_graph(self, sub_scene_description: str, asset_list: List[str]) -> dict:
-        """サブシーンのシーングラフを構築する (Step 3)"""
-        prompt = f"""
-        以下の記述とアセットリストに基づき、3Dシーンのリレーショナル二部グラフをJSONで構築してください。
-        シーン記述: "{sub_scene_description}"
-        アセットリスト: {asset_list}
-        
-        関係性には "Proximity", "Alignment", "Parallelism", "Perpendicularity" などを使用してください。
-        
-        出力形式:
-        {{
-            "relations": [
-                {{ "type": "Alignment", "involved_assets": ["house1", "house2"], "args": {{"axis": "x"}} }},
-                {{ "type": "Proximity", "involved_assets": ["lamp1", "house1"], "args": {{"min_dist": 1.0}} }}
-            ]
-        }}
+        Inner-Loop を実行し、単一のシーンを生成・改善する。
         """
-        response = openai.ChatCompletion.create(
-            model=PLANNER_MODEL,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return parse_llm_response_to_json(response.choices[0].message.content)
+        # Step 1: Asset Retrieval
+        assets_with_desc = asset_retriever.retrieve_assets(user_query)
+        asset_list = list(assets_with_desc.keys())
 
-    def generate_script(self, scene_graph: dict, asset_list: List[str]) -> str:
-        """シーングラフから実行可能なPythonスクリプトを生成する (Step 4)"""
-        # この部分は実際のBlender APIや制約ソルバーと連携するため、
-        # ここではスクリプトの骨格を生成する単純な例とします。
-        script_parts = [
-            "import bpy",
-            "import numpy as np",
-            "from spatial_skill_library import *",
-            "from layout import Layout",
-            "",
-            "# TODO: アセットの読み込みと初期化",
-            f"asset_names = {asset_list}",
-            "assets = {name: Layout(...) for name in asset_names}",
-            "",
-            "# 制約の評価とレイアウト最適化",
-            "def evaluate_layout(current_assets):",
-            "    total_score = 0"
-        ]
-
-        for relation in scene_graph.get("relations", []):
-            func_name = f"{relation['type'].lower()}_score"
-            assets_str = ", ".join([f"current_assets['{name}']" for name in relation['involved_assets']])
-            args_str = ", ".join([f"{k}={v}" for k, v in relation.get("args", {}).items()])
+        # Step 2: Scene Decomposition
+        sub_scenes = decomposer.decompose_query(user_query, asset_list)
+        
+        final_scripts = []
+        for i, sub_scene in enumerate(sub_scenes):
+            print(f"\n>>> サブシーン {i+1}/{len(sub_scenes)}: '{sub_scene['title']}' の処理を開始")
             
-            script_parts.append(f"    score = {func_name}({assets_str}, {args_str})")
-            script_parts.append("    total_score += score")
-        
-        script_parts.extend([
-            "    return total_score",
-            "",
-            "# TODO: 最適化ループ（例: 焼きなまし法、遺伝的アルゴリズムなど）",
-            "# best_layout = optimize(assets, evaluate_layout)",
-            "# TODO: best_layoutをBlenderシーンに適用"
-        ])
-        
-        return "\n".join(script_parts)
+            # Step 3: Scene Graph Construction
+            scene_graph = planner.plan_scene_graph(sub_scene['description'], sub_scene['asset_list'])
 
-    def review_and_revise(self, sub_scene_description: str, image_path: str, current_script: str) -> str:
-        """レンダリング画像を評価し、スクリプトを修正する (Step 5)"""
-        with open(image_path, "rb") as image_file:
-            base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+            # Step 4: Initial Script Generation
+            script = coder.generate_script_with_solver(scene_graph, sub_scene['asset_list'])
+
+            # Step 5: Iterative Refinement (Self-Improvement)
+            # ... この部分はmain.pyでループを回してシミュレート ...
+            
+            final_scripts.append({"title": sub_scene['title'], "script": script})
+        
+        return {"query": user_query, "final_scripts": final_scripts}
+
+    def run_outer_loop(self, refinement_history: List[Dict]):
+        """
+        (Outer-Loop) 修正履歴から汎用的なスキルを学習し、ライブラリを更新する。
+        論文の Section 2.4 に対応。
+        """
+        print("\n--- [Outer-Loop] 🎓 スキルライブラリの自己進化 ---")
+        
+        # 履歴の中から改善が見られた関数を特定する（ここでは'parallelism'を仮定）
+        # 実際のシステムでは、コードの差分分析などを行って自動で特定する
+        skill_to_improve = "parallelism"
+        
+        original_function_code = spatial_skill_library.get_skill_source(skill_to_improve)
+        
+        # 履歴から、この関数に関する修正内容を収集
+        # このデモでは、手動で改善後のコードを与えることでシミュレート
+        # revised_function_code = ... (履歴から抽出)
+        
+        # 論文 Figure 4 の例を再現
+        improved_function_example = inspect.getsource(spatial_skill_library.parallelism_score) # 完成版を理想形とする
+        
+        print(f"  学習対象のスキル: '{skill_to_improve}'")
 
         prompt = f"""
-        あなたは3Dシーンのレビュアーです。
-        テキスト記述: "{sub_scene_description}"
-        
-        提供された画像が記述を正確に表現しているか評価し、問題点があれば指摘してください。
-        その後、問題を修正するための完全なBlender Pythonスクリプトを```python ... ```形式で出力してください。
+        あなたは、3Dシーン生成エージェントのスキルを進化させる役割を担っています。
+        以下の関数は、シーン内のオブジェクトの「平行性」を評価するものですが、これまでの利用でいくつかの問題点が発見されました。
 
-        現在のスクリプト:
-        {current_script}
+        - **元の関数**: 位置関係しか考慮していなかった。
+        - **改善の方向性**: 複数のシーンを生成する過程で、オブジェクトの「向き」も揃える必要があることが判明した。
+
+        この学習結果を元に、元の関数を改善し、**位置と向きの両方を考慮する**より堅牢な新しい `{skill_to_improve}` 関数を生成してください。
+        
+        元の関数:
+        ```python
+        {original_function_code}
+        ```
+        
+        改善後の理想的な関数（参考）:
+        ```python
+        {improved_function_example}
+        ```
+
+        あなたのタスクは、この学びを反映した最終的な `parallelism_score` 関数をPythonコードとして出力することです。
         """
-        response = openai.ChatCompletion.create(
-            model=REVIEWER_MODEL,
-            messages=[
-                {"role": "user", "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
-                ]}
-            ],
-            max_tokens=4096
-        )
-        return extract_python_code(response.choices[0].message.content)
+        
+        learned_function_code = call_llm(LEARNER_MODEL, prompt, is_json=False)
+        learned_function_code = extract_python_code(learned_function_code)
+
+        print("\n  LLMによる学習の結果、新しい関数が生成されました:")
+        print(learned_function_code)
+        
+        # スキルライブラリを動的に更新
+        spatial_skill_library.update_skill(skill_to_improve, learned_function_code)
