@@ -1,5 +1,9 @@
+# layout.py
+"""
+3Dシーン内のアセットのレイアウト情報を定義するモジュール
+"""
 from dataclasses import dataclass
-from typing import Tuple, List
+from typing import Tuple
 
 @dataclass
 class Layout:
