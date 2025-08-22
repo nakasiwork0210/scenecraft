@@ -3,31 +3,66 @@
 Step 5: レビューと修正 (Critic-and-Revise)
 論文の Section 2.3 の Self-Improvement に対応。
 """
-from utils.llm_utils import call_vision_llm
+from utils.llm_utils import call_vision_llm, parse_llm_response_to_json
 from utils.config import REVIEWER_MODEL
+from typing import Dict, Any
 
-def review_and_revise(sub_scene_description: str, base64_image: str, current_script: str) -> str:
+def review_and_suggest_correction(sub_scene_description: str, base64_image: str, scene_graph: Dict) -> Dict[str, Any]:
     """
-    レンダリング画像を評価し、問題点があればスクリプトを修正する。
+    レンダリング画像を評価し、問題点があればシーングラフの修正案をJSON形式で返す。
     """
     print("\n--- [Step 5] 🧐 レビューと修正 (Inner-Loop) ---")
+    
+    # scene_graphをレビューしやすい形式に変換
+    relations_str = "\n".join([f"- {r['type']} on {r['involved_assets']}" for r in scene_graph.get("relations", [])])
+
     prompt = f"""
     あなたは3Dシーンのレビュアーです。
-    テキスト記述: "{sub_scene_description}"
-    
-    提供されたレンダリング画像が、この記述を正確に表現しているか評価してください。
-    特に、アセット間の空間関係（整列、近接、平行など）が不正確または欠落している点を特定してください。
-    
-    評価に基づき、問題を修正するための**完全で実行可能なBlender Pythonスクリプト**を
-    ```python 
-    ...
-    ```
-    の形式で出力してください。元のスクリプトの構造を維持し、必要な箇所のみを修正してください。
+    目的のシーン: "{sub_scene_description}"
 
-    現在のスクリプトは以下の通りです：
-    {current_script}
+    現在のシーングラフの関係性:
+    {relations_str}
+
+    提供されたレンダリング画像が、目的のシーンを正確に表現しているか評価してください。
+    もし問題があれば、シーングラフを修正するための**具体的な修正案を1つだけ**JSON形式で出力してください。
+    問題がなければ、 "status": "OK" とだけ返してください。
+
+    修正案の形式:
+    {{
+      "status": "revision_needed",
+      "feedback": "（画像から読み取れる具体的な問題点）",
+      "target_relation": {{
+        "type": "（修正対象の関係性の種類、例: parallelism）",
+        "involved_assets": ["（関連するアセットのリスト）"]
+      }},
+      "suggested_change": {{
+        "action": "（'update_args' or 'add_relation' or 'remove_relation'）",
+        "new_args": {{ "（新しい引数、例: 'axis': 'y'）" }}
+      }}
+    }}
+    
+    例：家が平行に並んでいない場合
+    {{
+      "status": "revision_needed",
+      "feedback": "Two 'Slum house' objects are not parallel to each other along the street.",
+      "target_relation": {{
+        "type": "parallelism",
+        "involved_assets": ["Slum house_1", "Slum house_2"]
+      }},
+      "suggested_change": {{
+        "action": "update_args",
+        "new_args": {{ "axis": "y" }}
+      }}
+    }}
     """
     print("  GPT-4Vにレビューを依頼中...")
-    revised_script = call_vision_llm(REVIEWER_MODEL, prompt, base64_image)
-    print("✔️ スクリプトが修正されました。")
-    return revised_script
+    # VisionモデルはJSONモードを直接サポートしていない場合が多いため、レスポンスをパースする
+    response_text = call_vision_llm(REVIEWER_MODEL, prompt, base64_image) 
+    correction_suggestion = parse_llm_response_to_json(response_text)
+
+    if correction_suggestion.get("status") == "revision_needed":
+        print(f"  ✔️ 修正案を受け取りました: {correction_suggestion.get('feedback')}")
+    else:
+        print("  ✔️ レビューの結果、問題は見つかりませんでした。")
+        
+    return correction_suggestion

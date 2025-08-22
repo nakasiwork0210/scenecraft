@@ -26,33 +26,70 @@ def main():
     
     refinement_history = []
     
-    # Step 5: 自己改善ループをシミュレート
-    num_refinement_steps = 2
-    for i, sub_scene_script in enumerate(run_result["final_scripts"]):
-        script = sub_scene_script["script"]
-        title = sub_scene_script["title"]
+    # Step 5: 自己改善ループを本格実装
+    num_refinement_steps = 2 # 改善試行の最大回数
+    
+    # agent.run_inner_loopから最終スクリプトだけでなく、シーングラフも受け取るようにする
+    # (※この変更のため、agent.pyのrun_inner_loopの返り値も修正が必要です)
+    run_result = agent.run_inner_loop(user_query)
+    
+    final_scripts = run_result["final_scripts"]
+    
+    for i, sub_scene_data in enumerate(final_scripts):
+        script = sub_scene_data["script"]
+        title = sub_scene_data["title"]
+        scene_graph = sub_scene_data["scene_graph"] # 実行結果からシーングラフを取得
         
         for step in range(num_refinement_steps):
             print(f"\n>>> サブシーン '{title}' の自己改善ループ {step + 1}/{num_refinement_steps}")
             
-            # a. スクリプトを実行してレンダリング (シミュレーション)
+            # a. スクリプトを実行してレンダリング
             image_path = f"output/rendered_image_subscene{i+1}_step{step}.png"
-            blender_env.execute_blender_script(script, image_path)
+            # blender_env.pyにassetライブラリのパスを渡すように修正
+            blender_env.execute_blender_script(script, image_path, "assets")
             
-            # b. レビューと修正
+            # b. レビューと修正案の取得
             base64_image = blender_env.get_base64_image(image_path)
-            if base64_image:
-                # 実際のVisionモデル呼び出しは高コストなため、ここではダミーの修正で代用
-                # revised_script = reviewer.review_and_revise(title, base64_image, script)
-                revised_script = script + f"\n# Revision {step+1}: Fixed alignment based on visual feedback."
-                
-                # 履歴を保存
+            if not base64_image:
+                print("  [Warning] 画像ファイルの読み込みに失敗し、レビューをスキップします。")
+                continue
+
+            # 新しいreviewerを呼び出す
+            correction = reviewer.review_and_suggest_correction(title, base64_image, scene_graph)
+
+            # c. 修正案に基づき、シーングラフを更新してスクリプトを再生成
+            if correction.get("status") == "revision_needed":
+                print("  [Planner] 修正案に基づき、シーングラフを更新します。")
+                # 改善履歴に修正内容を記録
                 refinement_history.append({
                     "sub_scene": title,
-                    "original_script": script,
-                    "revised_script": revised_script
+                    "feedback": correction.get("feedback"),
+                    "original_graph": scene_graph,
+                    "change": correction.get("suggested_change"),
                 })
-                script = revised_script
+
+                # --- シーングラフの修正ロジック ---
+                # ここでは簡略化のため、既存のrelationの引数を更新する処理を実装
+                change = correction["suggested_change"]
+                target = correction["target_relation"]
+                if change["action"] == "update_args":
+                    for relation in scene_graph.get("relations", []):
+                        # 型とアセットが一致する関係性を探す
+                        if relation["type"] == target["type"] and \
+                           set(relation["involved_assets"]) == set(target["involved_assets"]):
+                            print(f"    - Relation '{target['type']}' の引数を {relation.get('args', {})} から {change['new_args']} に更新。")
+                            relation["args"] = change["new_args"]
+                            break
+                # (ここで 'add_relation' や 'remove_relation' の処理も追加可能)
+                
+                print("  [Coder] 更新されたシーングラフからスクリプトを再生成します。")
+                # 更新されたシーングラフでスクリプトを再生成
+                script = coder.generate_script_with_solver(scene_graph, sub_scene_data["asset_list"])
+                final_scripts[i]["script"] = script # 最新のスクリプトに更新
+            else:
+                # 修正が不要な場合はループを抜ける
+                print("  [Reviewer] 修正は不要と判断されました。このサブシーンの処理を完了します。")
+                break
     
     print("\n============== Inner-Loop Finished ==============")
     
