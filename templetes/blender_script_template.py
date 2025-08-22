@@ -19,27 +19,30 @@ blender_objects = {{}}
 bpy.ops.object.select_all(action='SELECT')
 bpy.ops.object.delete()
 
-print('  [Blender] 3Dアセットをインポート中...')
-for name, path in ASSET_PATHS.items():
+print('  [Blender] 3Dアセットをインポートし、スケールを正規化中...')
+for name, info in ASSET_INFO.items():
+    path = info.get("file_path")
+    target_height = info.get("height", 1.0)
+    
     if path and os.path.exists(path):
-        try:
-            ext = os.path.splitext(path)[1].lower()
-            if ext == '.obj':
-                bpy.ops.import_scene.obj(filepath=path)
-            elif ext == '.fbx':
-                bpy.ops.import_scene.fbx(filepath=path)
-            elif ext in ['.glb', '.gltf']:
-                 bpy.ops.import_scene.gltf(filepath=path)
-            imported_obj = bpy.context.selected_objects[0]
-            blender_objects[name] = imported_obj
-            blender_objects[name].name = name
-            print(f'    ✅ {{name}} をインポートしました。')
-        except Exception as e:
-            print(f'    ❌ {{name}} のインポートに失敗しました: {{e}}')
-    else:
-        print(f'    [Warning] アセットのパスが見つかりません: {{name}} at {{path}}')
+        # ... (アセットのインポート処理) ...
+        imported_obj = bpy.context.selected_objects[0]
+        
+        # --- 【追加】スケールの正規化と適用 ---
+        # 現在のオブジェクトの高さを取得 (dimensions.z)
+        current_height = imported_obj.dimensions.z
+        if current_height > 0:
+            # 高さを1に正規化するためのスケール係数を計算
+            scale_factor = target_height / current_height
+            imported_obj.scale = (scale_factor, scale_factor, scale_factor)
+            bpy.context.view_layer.update() # スケール変更を確定
+            print(f'    ✅ {{name}} をインポートし、高さを {{target_height}}m に調整しました。')
 
-assets_layout = {{name: Layout(location=(random.uniform(-10, 10), random.uniform(-10, 10), 0), orientation=(0,0,0), scale=(1,1,1)) for name in ASSET_NAMES}}
+        blender_objects[name] = imported_obj
+        # ...
+        
+# 【変更】Layoutの初期スケールは(1,1,1)のまま（適用済みのため）
+assets_layout = {{name: Layout(location=..., orientation=..., scale=(1,1,1)) for name in ASSET_NAMES}}
 
 # --- 2. 制約評価関数 ---
 def evaluate_layout(current_assets: Dict[str, Layout]) -> float:

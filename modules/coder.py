@@ -34,7 +34,7 @@ def generate_evaluation_logic(scene_graph: Dict) -> str:
     return "\n".join(logic_parts)
 
 
-def generate_script_with_solver(scene_graph: Dict, assets_with_paths: Dict[str, str]) -> str:
+def generate_script_with_solver(scene_graph: Dict, assets_info: Dict[str, Dict]) -> str:
     """
     テンプレートを基に、最適化とレンダリングを行う完全なBlenderスクリプトを生成する。
     """
@@ -50,9 +50,8 @@ def generate_script_with_solver(scene_graph: Dict, assets_with_paths: Dict[str, 
     evaluation_logic = generate_evaluation_logic(scene_graph)
 
     script = template.format(
-        asset_paths=str({name: path for name, path in assets_with_paths.items() if path}),
-        asset_names=str(list(assets_with_paths.keys())),
-        evaluation_logic=evaluation_logic
+        asset_info=str(assets_info),
+        evaluation_logic=generate_evaluation_logic(scene_graph)
     )
     
     print("✔️ テンプレートから完全なスクリプトが生成されました。")

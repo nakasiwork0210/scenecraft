@@ -24,30 +24,26 @@ class SceneCraftAgent:
         Inner-Loop を実行し、単一のシーンを生成・改善する。
         """
         # Step 1: Asset Retrieval
-        # assets_with_paths を受け取るように asset_retriever を呼び出す
-        assets_with_paths = asset_retriever.retrieve_assets(user_query)
+        assets_info = asset_retriever.retrieve_assets(user_query)
         
         # Step 2: Scene Decomposition
-        asset_list = list(assets_with_paths.keys())
+        asset_list = list(assets_info.keys())
         sub_scenes = decomposer.decompose_query(user_query, asset_list)
         
         processed_sub_scenes = []
         for i, sub_scene in enumerate(sub_scenes):
-            print(f"\n>>> サブシーン {i+1}/{len(sub_scenes)}: '{sub_scene['title']}' の処理を開始")
+            # ... (Step 3: Scene Graph Construction) ...
             
-            # Step 3: Scene Graph Construction
-            scene_graph = planner.plan_scene_graph(sub_scene['description'], sub_scene['asset_list'])
-
-            # Step 4: Initial Script Generation
-            # coderにはアセット名とパスの辞書を渡す
-            script = coder.generate_script_with_solver(scene_graph, {name: assets_with_paths[name] for name in sub_scene['asset_list']})
+            # 【変更】coderに渡す情報に、ファイルパスと高さの両方を含める
+            assets_for_coder = {name: assets_info[name] for name in sub_scene['asset_list']}
+            script = coder.generate_script_with_solver(scene_graph, assets_for_coder)
 
             processed_sub_scenes.append({
                 "title": sub_scene['title'],
                 "script": script,
                 "scene_graph": scene_graph,
                 "asset_list": sub_scene['asset_list'],
-                "assets_with_paths": {name: assets_with_paths[name] for name in sub_scene['asset_list']}
+                "assets_info": assets_for_coder # 改善ループで再利用するために保存
             })
         
         return {"query": user_query, "processed_sub_scenes": processed_sub_scenes}

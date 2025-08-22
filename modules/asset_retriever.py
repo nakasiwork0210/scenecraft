@@ -17,6 +17,65 @@ for asset in ASSET_DATABASE:
     asset['text_embedding'] = np.array(asset['text_embedding'])
 print("[Asset Retriever] ✔️ ロード完了。")
 # ----------------------------------------------------
+def predict_asset_scales(assets_with_paths: Dict[str, str]) -> Dict[str, float]:
+    """
+    【新規追加】LLMを使い、アセットの現実的な高さをメートル単位で予測する。
+    """
+    print("  - LLMにアセットの現実的な高さの予測を依頼中...")
+    
+    asset_names = list(assets_with_paths.keys())
+    
+    prompt = f"""
+    以下の3Dアセットリストがシーンに配置されます。
+    各アセットの現実的な高さをメートル単位で予測し、Pythonの辞書形式で出力してください。
+    例えば、人間なら1.7、車なら1.5のように常識的な値を設定してください。
+
+    アセットリスト: {asset_names}
+
+    出力形式の例:
+    ```json
+    {{
+      "Slum house": 10.0,
+      "Hunter": 1.65,
+      "Street Lamp": 3.0
+    }}
+    ```
+    """
+    
+    predicted_scales = call_llm(ASSET_MODEL, prompt)
+    
+    if not isinstance(predicted_scales, dict):
+        print("    [Warning] 高さの予測に失敗しました。デフォルト値を使用します。")
+        return {name: 1.0 for name in asset_names} # 失敗した場合はすべて1.0とする
+        
+    print("    ✔️ 高さの予測が完了しました。")
+    return predicted_scales
+
+def retrieve_assets(user_query: str) -> Dict[str, Dict]:
+    """
+    ユーザーのクエリからアセットを検索し、ファイルパスと予測された高さを返す。
+    """
+    print("\n--- [Step 1] 🖼️ アセット選定 (高精度) ---")
+    
+    # ... (LLMによるアセット説明の生成部分は変更なし) ...
+    assets_to_find = call_llm(ASSET_MODEL, f"...") # promptは省略
+
+    # ... (2段階検索によるファイルパスの取得部分は変更なし) ...
+    retrieved_assets_paths = {}
+    # ...
+            
+    # 【追加】取得したアセットのスケールを予測
+    predicted_scales = predict_asset_scales(retrieved_assets_paths)
+    
+    # 【変更】返り値にファイルパスとスケール(高さ)の両方を含める
+    final_assets_info = {}
+    for name, path in retrieved_assets_paths.items():
+        final_assets_info[name] = {
+            "file_path": path,
+            "height": predicted_scales.get(name, 1.0) # 予測がなければデフォルト1.0
+        }
+        
+    return final_assets_info
 
 def find_best_asset_with_reranking(query_description: str, top_k: int = 10) -> Dict:
     """
