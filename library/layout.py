@@ -3,6 +3,7 @@
 """
 from dataclasses import dataclass
 from typing import Tuple
+from copy import deepcopy
 
 @dataclass
 class Layout:
@@ -13,3 +14,6 @@ class Layout:
     location: Tuple[float, float, float]  # 位置 (x, y, z)
     orientation: Tuple[float, float, float] # 向き (pitch, yaw, roll)
     scale: Tuple[float, float, float]     # スケール (sx, sy, sz)
+    
+    def copy(self):
+        return deepcopy(self)

@@ -58,7 +58,7 @@ def main():
                 refinement_history.append({
                     "sub_scene": title,
                     "feedback": correction.get("feedback"),
-                    "original_graph": scene_graph.copy(), # 変更前のグラフをコピーして保存
+                    "original_graph": copy.deepcopy(scene_graph),
                     "change": correction.get("suggested_change"),
                 })
 
@@ -73,9 +73,9 @@ def main():
                             relation["args"].update(change['new_args']) # updateメソッドで引数を更新
                             break
                 
-                print("  [Coder] 更新されたシーングラフからスクリプトを再生成します。")
-                script = coder.generate_script_with_solver(scene_graph, asset_list)
-                processed_sub_scenes[i]["script"] = script # 最新のスクリプトに更新
+                assets_with_paths = sub_scene_data["assets_with_paths"]
+                script = coder.generate_script_with_solver(scene_graph, assets_with_paths)
+                processed_sub_scenes[i]["script"] = script
             else:
                 print("  [Reviewer] 修正は不要と判断されました。このサブシーンの処理を完了します。")
                 break
