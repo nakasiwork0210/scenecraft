@@ -51,31 +51,6 @@ def predict_asset_scales(assets_with_paths: Dict[str, str]) -> Dict[str, float]:
     print("    ✔️ 高さの予測が完了しました。")
     return predicted_scales
 
-def retrieve_assets(user_query: str) -> Dict[str, Dict]:
-    """
-    ユーザーのクエリからアセットを検索し、ファイルパスと予測された高さを返す。
-    """
-    print("\n--- [Step 1] 🖼️ アセット選定 (高精度) ---")
-    
-    # ... (LLMによるアセット説明の生成部分は変更なし) ...
-    assets_to_find = call_llm(ASSET_MODEL, f"...") # promptは省略
-
-    # ... (2段階検索によるファイルパスの取得部分は変更なし) ...
-    retrieved_assets_paths = {}
-    # ...
-            
-    # 【追加】取得したアセットのスケールを予測
-    predicted_scales = predict_asset_scales(retrieved_assets_paths)
-    
-    # 【変更】返り値にファイルパスとスケール(高さ)の両方を含める
-    final_assets_info = {}
-    for name, path in retrieved_assets_paths.items():
-        final_assets_info[name] = {
-            "file_path": path,
-            "height": predicted_scales.get(name, 1.0) # 予測がなければデフォルト1.0
-        }
-        
-    return final_assets_info
 
 def find_best_asset_with_reranking(query_description: str, top_k: int = 10) -> Dict:
     """
@@ -113,10 +88,9 @@ def find_best_asset_with_reranking(query_description: str, top_k: int = 10) -> D
             
     return best_asset
 
-def retrieve_assets(user_query: str) -> Dict[str, str]:
+def retrieve_assets(user_query: str) -> Dict[str, Dict]:
     """
-    ユーザーのクエリからアセットの説明をLLMで生成し、
-    最も一致するアセットのファイルパスを返す。
+    【修正】関数を一つに統合し、アセットのパスと高さを正しく返すように修正
     """
     print("\n--- [Step 1] 🖼️ アセット選定 (高精度) ---")
     
@@ -133,19 +107,27 @@ def retrieve_assets(user_query: str) -> Dict[str, str]:
         print("  [Warning] LLMから有効なアセットリストを取得できませんでした。")
         return {}
 
-    retrieved_assets = {}
+    retrieved_assets_paths = {}
     print("✔️ 選定されたアセット:")
     for asset_name, description in assets_to_find.items():
         print(f"  - '{description}' を検索中...")
-        
-        # 【改善点】新しい2段階検索関数を呼び出す
         best_match = find_best_asset_with_reranking(description)
-        
         if best_match:
             print(f"    ✅ 発見 (画像スコアで選定): {best_match['file_path']}")
-            retrieved_assets[asset_name] = best_match['file_path']
+            retrieved_assets_paths[asset_name] = best_match['file_path']
         else:
             print(f"    ❌ 該当アセットが見つかりませんでした。")
-            retrieved_assets[asset_name] = None
-            
-    return retrieved_assets
+            retrieved_assets_paths[asset_name] = None
+    
+    # 取得したアセットのスケールを予測
+    predicted_scales = predict_asset_scales(retrieved_assets_paths)
+    
+    # 返り値にファイルパスとスケール(高さ)の両方を含める
+    final_assets_info = {}
+    for name, path in retrieved_assets_paths.items():
+        final_assets_info[name] = {
+            "file_path": path,
+            "height": predicted_scales.get(name, 1.0)
+        }
+        
+    return final_assets_info

@@ -34,7 +34,7 @@ def generate_evaluation_logic(scene_graph: Dict) -> str:
     return "\n".join(logic_parts)
 
 
-def generate_script_with_solver(scene_graph: Dict, assets_info: Dict[str, Dict]) -> str:
+def generate_script_with_solver(scene_graph: Dict, assets_info: Dict[str, Dict], camera_settings: Dict[str, Any]) -> str:
     """
     テンプレートを基に、最適化とレンダリングを行う完全なBlenderスクリプトを生成する。
     """

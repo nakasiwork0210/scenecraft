@@ -13,27 +13,21 @@ from utils.config import LEARNER_MODEL
 from library import spatial_skill_library
 
 class SceneCraftAgent:
-    """
-    テキストから3Dシーンを生成し、自己進化するLLMエージェント
-    """
     def __init__(self):
-        self.history = [] # Outer-Loopのための履歴
-        def predict_camera_work(self, scene_description: str, all_asset_names: List[str]) -> Dict[str, Any]:
+        self.history = []
+
+    def predict_camera_work(self, scene_description: str, all_asset_names: List[str]) -> Dict[str, Any]:
         """
-        【新規追加】LLMを使い、シーンに最適なカメラの位置と注視点を予測する。
+        【修正】クラスのメソッドとして正しく定義
         """
         print("\n--- [Camera Planner] 📸 LLMに最適なカメラワークを考案させています ---")
-        
         prompt = f"""
         これから「{scene_description}」というテーマの3Dシーンをレンダリングします。
         このシーンの魅力を最大限に引き出すための、プロのカメラマンのようなカメラ設定を提案してください。
-
         シーンに含まれるアセット: {all_asset_names}
-
         提案は、カメラの「位置(location)」と「注視点(look_at)」の2つのキーを持つJSON形式で出力してください。
         - location: カメラを配置する座標 (x, y, z)
         - look_at: カメラがどのオブジェクト名を見るべきか。シーンの中心を見る場合は "center" と指定。
-
         出力形式の例:
         ```json
         {{
@@ -42,9 +36,7 @@ class SceneCraftAgent:
         }}
         ```
         """
-        
-        camera_settings = call_llm(LEARNER_MODEL, prompt) # 高度な推論が可能なモデルを使用
-        
+        camera_settings = call_llm(LEARNER_MODEL, prompt)
         if isinstance(camera_settings, dict) and "location" in camera_settings and "look_at" in camera_settings:
             print(f"    ✔️ カメラ設定が決定しました: 位置={camera_settings['location']}, 注視点='{camera_settings['look_at']}'")
             return camera_settings
@@ -53,30 +45,33 @@ class SceneCraftAgent:
             return {"location": [15, -20, 15], "look_at": "center"}
 
     def run_inner_loop(self, user_query: str) -> Dict[str, Any]:
-        """
-        Inner-Loop を実行し、単一のシーンを生成・改善する。
-        """
         # Step 1: Asset Retrieval
         assets_info = asset_retriever.retrieve_assets(user_query)
         
         # Step 2: Scene Decomposition
         asset_list = list(assets_info.keys())
         sub_scenes = decomposer.decompose_query(user_query, asset_list)
+
+        # 【追加】LLMによるカメラワークの決定
+        camera_settings = self.predict_camera_work(user_query, asset_list)
         
         processed_sub_scenes = []
         for i, sub_scene in enumerate(sub_scenes):
-            # ... (Step 3: Scene Graph Construction) ...
+            print(f"\n>>> サブシーン {i+1}/{len(sub_scenes)}: '{sub_scene['title']}' の処理を開始")
             
-            # 【変更】coderに渡す情報に、ファイルパスと高さの両方を含める
+            scene_graph = planner.plan_scene_graph(sub_scene['description'], sub_scene['asset_list'])
+
             assets_for_coder = {name: assets_info[name] for name in sub_scene['asset_list']}
-            script = coder.generate_script_with_solver(scene_graph, assets_for_coder)
+            
+            # 【変更】coderにカメラ設定も渡す
+            script = coder.generate_script_with_solver(scene_graph, assets_for_coder, camera_settings)
 
             processed_sub_scenes.append({
                 "title": sub_scene['title'],
                 "script": script,
                 "scene_graph": scene_graph,
                 "asset_list": sub_scene['asset_list'],
-                "assets_info": assets_for_coder # 改善ループで再利用するために保存
+                "assets_info": assets_for_coder
             })
         
         return {"query": user_query, "processed_sub_scenes": processed_sub_scenes}

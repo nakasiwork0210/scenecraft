@@ -41,8 +41,7 @@ for name, info in ASSET_INFO.items():
         blender_objects[name] = imported_obj
         # ...
         
-# 【変更】Layoutの初期スケールは(1,1,1)のまま（適用済みのため）
-assets_layout = {{name: Layout(location=..., orientation=..., scale=(1,1,1)) for name in ASSET_NAMES}}
+assets_layout = {{name: Layout(location=(random.uniform(-10, 10), random.uniform(-10, 10), 0), orientation=(0,0,0), scale=(1,1,1)) for name in ASSET_NAMES}}
 
 # --- 2. 制約評価関数 ---
 def evaluate_layout(current_assets: Dict[str, Layout]) -> float:
@@ -90,19 +89,20 @@ bpy.ops.mesh.primitive_plane_add(size=100, location=(0, 0, 0))
 ground = bpy.context.active_object
 ground.name = 'Ground'
 
-bpy.ops.object.camera_add(location=(15, -20, 15))
+bpy.ops.object.camera_add(location=CAMERA_LOCATION)
 camera = bpy.context.active_object
 bpy.context.scene.camera = camera
 
 look_at_target = bpy.data.objects.get(CAMERA_LOOK_AT)
 if not look_at_target:
-    # 指定されたオブジェクトがない、または"center"の場合は最初のアセットか地面を見る
     look_at_target = bpy.data.objects.get(ASSET_NAMES[0]) if ASSET_NAMES else ground
 
 if look_at_target:
     direction = look_at_target.location - camera.location
     rot_quat = direction.to_track_quat('-Z', 'Y')
     camera.rotation_euler = rot_quat.to_euler()
+
+
 direction = look_at_target.location - camera.location
 rot_quat = direction.to_track_quat('-Z', 'Y')
 camera.rotation_euler = rot_quat.to_euler()
