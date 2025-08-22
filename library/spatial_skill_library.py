@@ -8,6 +8,7 @@ import numpy as np
 import inspect
 
 from .layout import Layout
+from . import skill_database
 
 # --- Helper Functions ---
 def _calculate_vector(p1, p2):

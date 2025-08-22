@@ -1,5 +1,5 @@
 # modules/coder.py
-from typing import List, Dict
+from typing import List, Dict, Any
 
 def generate_evaluation_logic(scene_graph: Dict) -> str:
     """
@@ -51,7 +51,7 @@ def generate_script_with_solver(scene_graph: Dict, assets_info: Dict[str, Dict],
 
     script = template.format(
         asset_info=str(assets_info),
-        evaluation_logic=generate_evaluation_logic(scene_graph)
+        evaluation_logic=generate_evaluation_logic(scene_graph),
         camera_location=str(camera_settings.get("location", [15, -20, 15])),
         camera_look_at=f'"{camera_settings.get("look_at", "center")}"'
     )
