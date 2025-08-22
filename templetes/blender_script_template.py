@@ -94,7 +94,15 @@ bpy.ops.object.camera_add(location=(15, -20, 15))
 camera = bpy.context.active_object
 bpy.context.scene.camera = camera
 
-look_at_target = bpy.data.objects.get(ASSET_NAMES[0]) if ASSET_NAMES else ground
+look_at_target = bpy.data.objects.get(CAMERA_LOOK_AT)
+if not look_at_target:
+    # 指定されたオブジェクトがない、または"center"の場合は最初のアセットか地面を見る
+    look_at_target = bpy.data.objects.get(ASSET_NAMES[0]) if ASSET_NAMES else ground
+
+if look_at_target:
+    direction = look_at_target.location - camera.location
+    rot_quat = direction.to_track_quat('-Z', 'Y')
+    camera.rotation_euler = rot_quat.to_euler()
 direction = look_at_target.location - camera.location
 rot_quat = direction.to_track_quat('-Z', 'Y')
 camera.rotation_euler = rot_quat.to_euler()

@@ -6,6 +6,7 @@ from agent import SceneCraftAgent
 from utils import blender_env
 from library import spatial_skill_library
 from modules import reviewer, coder # coder と reviewer をインポート
+import copy
 
 def main():
     print("============== SceneCraft Agent Initializing ==============")
@@ -73,8 +74,8 @@ def main():
                             relation["args"].update(change['new_args']) # updateメソッドで引数を更新
                             break
                 
-                assets_with_paths = sub_scene_data["assets_with_paths"]
-                script = coder.generate_script_with_solver(scene_graph, assets_with_paths)
+                assets_info = sub_scene_data["assets_info"]
+                script = coder.generate_script_with_solver(scene_graph, assets_info)
                 processed_sub_scenes[i]["script"] = script
             else:
                 print("  [Reviewer] 修正は不要と判断されました。このサブシーンの処理を完了します。")

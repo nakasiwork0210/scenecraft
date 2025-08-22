@@ -18,6 +18,39 @@ class SceneCraftAgent:
     """
     def __init__(self):
         self.history = [] # Outer-Loopのための履歴
+        def predict_camera_work(self, scene_description: str, all_asset_names: List[str]) -> Dict[str, Any]:
+        """
+        【新規追加】LLMを使い、シーンに最適なカメラの位置と注視点を予測する。
+        """
+        print("\n--- [Camera Planner] 📸 LLMに最適なカメラワークを考案させています ---")
+        
+        prompt = f"""
+        これから「{scene_description}」というテーマの3Dシーンをレンダリングします。
+        このシーンの魅力を最大限に引き出すための、プロのカメラマンのようなカメラ設定を提案してください。
+
+        シーンに含まれるアセット: {all_asset_names}
+
+        提案は、カメラの「位置(location)」と「注視点(look_at)」の2つのキーを持つJSON形式で出力してください。
+        - location: カメラを配置する座標 (x, y, z)
+        - look_at: カメラがどのオブジェクト名を見るべきか。シーンの中心を見る場合は "center" と指定。
+
+        出力形式の例:
+        ```json
+        {{
+          "location": [15.0, -25.0, 12.0],
+          "look_at": "Hunter"
+        }}
+        ```
+        """
+        
+        camera_settings = call_llm(LEARNER_MODEL, prompt) # 高度な推論が可能なモデルを使用
+        
+        if isinstance(camera_settings, dict) and "location" in camera_settings and "look_at" in camera_settings:
+            print(f"    ✔️ カメラ設定が決定しました: 位置={camera_settings['location']}, 注視点='{camera_settings['look_at']}'")
+            return camera_settings
+        else:
+            print("    [Warning] カメラ設定の予測に失敗しました。デフォルト設定を使用します。")
+            return {"location": [15, -20, 15], "look_at": "center"}
 
     def run_inner_loop(self, user_query: str) -> Dict[str, Any]:
         """
