@@ -29,7 +29,7 @@ class SceneCraftAgent:
         # Step 2: Scene Decomposition
         sub_scenes = decomposer.decompose_query(user_query, asset_list)
         
-        final_scripts = []
+        processed_sub_scenes = [] # 変数名を final_scripts から変更
         for i, sub_scene in enumerate(sub_scenes):
             print(f"\n>>> サブシーン {i+1}/{len(sub_scenes)}: '{sub_scene['title']}' の処理を開始")
             
@@ -40,11 +40,18 @@ class SceneCraftAgent:
             script = coder.generate_script_with_solver(scene_graph, sub_scene['asset_list'])
 
             # Step 5: Iterative Refinement (Self-Improvement)
-            # ... この部分はmain.pyでループを回してシミュレート ...
+            # ... この後の改善ループは main.py で実行 ...
             
-            final_scripts.append({"title": sub_scene['title'], "script": script})
+            # 【変更点】返り値に scene_graph と asset_list を追加
+            processed_sub_scenes.append({
+                "title": sub_scene['title'],
+                "script": script,
+                "scene_graph": scene_graph,
+                "asset_list": sub_scene['asset_list']
+            })
         
-        return {"query": user_query, "final_scripts": final_scripts}
+        return {"query": user_query, "processed_sub_scenes": processed_sub_scenes}
+
 
     def run_outer_loop(self, refinement_history: List[Dict]):
         """
